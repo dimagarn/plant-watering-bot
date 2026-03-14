@@ -1,0 +1,72 @@
+# Build results
+bin/
+obj/
+
+# User-specific files
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Visual Studio Code
+.vscode/
+
+# NuGet packages
+*.nupkg
+packages/
+# Uncomment if using package reference instead of packages folder
+# !packages/*.dll
+
+# Windows image file caches
+Thumbs.db
+ehthumbs.db
+
+# ASP.NET Scaffolding
+ScaffoldingReadMe.txt
+
+# StyleCop
+StyleCopReport.xml
+
+# Files built by Visual Studio
+*.dll
+*.exe
+*.pdb
+*.cache
+*.log
+
+# Others
+*.vspscc
+*.vssscc
+
+# Dotnet CLI
+*.vs/
+
+# Entity Framework Migrations
+Migrations/
+
+# Publish output
+*.publish.xml
+publish/
+
+# Test results
+TestResults/
+*.trx
+
+# Local history for Visual Studio
+.localhistory/
+
+# ReSharper
+_ReSharper*/
+*.[Rr]e[Ss]harper
+*.DotSettings.user
+
+# Rider
+.idea/
+
+# Backup & temporary files
+~$*
+*.tmp
+*.bak
+
+# Web config transforms
+*.config.transform.*
