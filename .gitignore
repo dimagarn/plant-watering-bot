@@ -70,3 +70,6 @@ _ReSharper*/
 
 # Web config transforms
 *.config.transform.*
+
+# User secrets (if using ASP.NET Core)
+appsettings.json

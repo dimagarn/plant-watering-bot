@@ -2,9 +2,9 @@
 using Telegram.Bot.Polling;
 using Telegram.Bot.Types;
 using Telegram.Bot.Types.Enums;
-using Telegram.Bot.Args;
 using TelegramQuestBot.Models;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 
 namespace TelegramQuestBot
 {
@@ -12,13 +12,16 @@ namespace TelegramQuestBot
     {
         static async Task Main()
         {
-            var token = "7027999847:AAGvr5o-FUpIh5awURFezZyrVx50uhTSdBA";
+            var config = new ConfigurationBuilder()
+                .AddJsonFile("appsettings.json")
+                .Build();
+
+            var token = config["BotConfiguration:token"];
             using var cts = new CancellationTokenSource();
             var bot = new TelegramBotClient(token, cancellationToken: cts.Token);
 
-            // Инициализация базы данных (убедитесь, что она существует)
             using var dbContext = new AppDbContext();
-            await dbContext.Database.EnsureCreatedAsync();  // Создаёт базу, если её нет (для простых случаев; для продакшена используйте миграции)
+            await dbContext.Database.EnsureCreatedAsync();
 
             async Task HandleUpdateAsync(ITelegramBotClient botClient, Update update, CancellationToken cancellationToken)
             {
