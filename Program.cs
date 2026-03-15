@@ -5,11 +5,14 @@ using Telegram.Bot.Types.Enums;
 using TelegramQuestBot.Models;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using Hangfire;
+using Hangfire.PostgreSql;
 
 namespace TelegramQuestBot
 {
     class Program
     {
+        static TelegramBotClient bot;
         static async Task Main()
         {
             var config = new ConfigurationBuilder()
@@ -18,10 +21,16 @@ namespace TelegramQuestBot
 
             var token = config["BotConfiguration:token"];
             using var cts = new CancellationTokenSource();
-            var bot = new TelegramBotClient(token, cancellationToken: cts.Token);
+            bot = new TelegramBotClient(token, cancellationToken: cts.Token);
 
             using var dbContext = new AppDbContext();
             await dbContext.Database.EnsureCreatedAsync();
+
+            GlobalConfiguration.Configuration
+                .UsePostgreSqlStorage(c => 
+                c.UseNpgsqlConnection(config["ConnectionStrings:hangfireConnectionString"]));
+
+            var server = new BackgroundJobServer();
 
             async Task HandleUpdateAsync(ITelegramBotClient botClient, Update update, CancellationToken cancellationToken)
             {
@@ -69,6 +78,12 @@ namespace TelegramQuestBot
                 {
                     dbContext.Plants.Add(plant);
                     await dbContext.SaveChangesAsync();
+                    RecurringJob.AddOrUpdate($"Remind for plant: {plant.Id}, chat: {plant.ChatId}", () => SendWateringReminder(plant.Id), plant.WateringFrequency.ToLower() switch
+                    {
+                        "ежедневно" => Cron.Daily,
+                        "еженедельно" => Cron.Weekly,
+                        "ежемесячно" => Cron.Monthly,
+                        _ => throw new ArgumentException("Invalid watering frequency")});
                     await bot.SendMessage(
                         chatId: message.Chat.Id,
                         text: $"✅ Растение '{plant.Name}' добавлено! Я буду напоминать тебе поливать его {plant.WateringFrequency}.",
@@ -102,5 +117,17 @@ namespace TelegramQuestBot
             Console.WriteLine("Бот запущен... Для завершения нажмите Ctrl+C.");
             await Task.Delay(-1, cts.Token);
         }
+
+        public static async Task SendWateringReminder(int plantid)
+            {
+                using var dbContext = new AppDbContext();
+                var plant = await dbContext.Plants.FindAsync(plantid);
+                if (plant is null)
+                {
+                    Console.WriteLine("Ошибка, растение не найдено!");
+                    return;
+                }
+                await bot.SendMessage(plant.ChatId, $"Напоминание! Полить растение: {plant.Name} 🌿");
+            }
     }
 }
