@@ -81,7 +81,7 @@ namespace TelegramQuestBot
                 {
                     dbContext.Plants.Add(plant);
                     await dbContext.SaveChangesAsync();
-                    RecurringJob.AddOrUpdate($"Remind for plant: {plant.Id}, chat: {plant.ChatId}", () => SendWateringReminder(plant.Id), plant.WateringFrequency.ToLower() switch
+                    RecurringJob.AddOrUpdate(GetJobId(plant.Id, plant.ChatId), () => SendWateringReminder(plant.Id), plant.WateringFrequency.ToLower() switch
                     {
                         "ежедневно" => Cron.Daily,
                         "еженедельно" => Cron.Weekly,
@@ -137,6 +137,7 @@ namespace TelegramQuestBot
                 {
                     dbContext.Plants.Remove(plant);
                     await dbContext.SaveChangesAsync();
+                    RecurringJob.RemoveIfExists(GetJobId(plantId, chatId));
                     await bot.SendMessage(chatId, $"✅ Растение с id: {plantid} успешно удалено!");
                 } 
                 else
@@ -183,5 +184,8 @@ namespace TelegramQuestBot
             await dbContext.SaveChangesAsync();
             await bot.SendMessage(plant.ChatId, $"Напоминание! Полить растение: {plant.Name} 🌿");
         }
+
+        static string GetJobId(int plantId, long chatId) => 
+    $"Remind for plant: {plantId}, chat: {chatId}";
     }
 }
