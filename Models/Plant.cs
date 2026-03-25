@@ -9,5 +9,6 @@ namespace TelegramQuestBot.Models
         public required string Name { get; set; }
         public required string WateringFrequency { get; set; }
         public DateTime NextWateringDate { get; set; }
+        public byte NotificationHour { get; set; } = 9;
     }
 }

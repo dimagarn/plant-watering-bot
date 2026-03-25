@@ -35,6 +35,8 @@ public class BotHandler
             await plantService.MyPlants(update.Message.Chat.Id);
         else if (update.Type == UpdateType.Message && update.Message?.Text?.StartsWith("/deleteplant") == true)
             await plantService.DeletePlant(update.Message);
+        else if (update.Type == UpdateType.Message && update.Message?.Text?.StartsWith("/settime") == true)
+            await plantService.SetTime(update.Message);
     }
 
     public Task HandleErrorAsync(ITelegramBotClient botClient, Exception exception, CancellationToken cancellationToken)
