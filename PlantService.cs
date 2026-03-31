@@ -28,9 +28,23 @@ public class PlantService
         var name = args[1];
         var wateringFrequency = args[2];
 
+        var data = new UserPlantData
+        {
+            PlantName = name,
+            WateringFrequency = wateringFrequency
+        };
+
+        await CreatePlant(message.Chat.Id, data, cancellationToken);
+    }
+
+    public async Task CreatePlant(long chatId, UserPlantData data, CancellationToken cancellationToken)
+    {
+        var name = data.PlantName;
+        var wateringFrequency = data.WateringFrequency;
+
         var plant = new Plant
         {
-            ChatId = message.Chat.Id,
+            ChatId = chatId,
             Name = name,
             WateringFrequency = wateringFrequency,
             NextWateringDate = DateTime.UtcNow.AddDays(wateringFrequency.ToLower() switch
@@ -48,9 +62,10 @@ public class PlantService
             await _dbContext.SaveChangesAsync();
             RecurringJob.AddOrUpdate(GetJobId(plant.Id, plant.ChatId), () => SendWateringReminder(plant.Id), GetCronExpression(plant));
             await _bot.SendMessage(
-                chatId: message.Chat.Id,
-                text: $"✅ Растение '{plant.Name}' добавлено! Я буду напоминать тебе поливать его {plant.WateringFrequency}.",
-                cancellationToken: cancellationToken);
+                chatId: chatId,
+                text: $"✅ Растение '{plant.Name}' добавлено! Я буду напоминать тебе поливать его {plant.WateringFrequency} в {plant.NotificationHour}:00.",
+                cancellationToken: cancellationToken,
+                replyMarkup: Keyboards.Main);
         }
         catch (Exception ex)
         {
@@ -59,7 +74,7 @@ public class PlantService
             {
                 Console.WriteLine($"Внутренняя ошибка: {ex.InnerException.Message}");
             }
-            await _bot.SendMessage(message.Chat.Id, "❌ Ошибка при добавлении растения. Проверьте данные и попробуйте снова.");
+            await _bot.SendMessage(chatId, "❌ Ошибка при добавлении растения. Проверьте данные и попробуйте снова.");
         }
     }
 
@@ -81,7 +96,7 @@ public class PlantService
         await _bot.SendMessage(chatid, stringBuilder.ToString());
     }
 
-    public async Task DeletePlant(Message message)
+    public async Task DeletePlant(Message message, CancellationToken cancellationToken)
     {
         var chatId = message.Chat.Id;
         var plantId = new int();
@@ -95,17 +110,26 @@ public class PlantService
             await _bot.SendMessage(chatId, "ошибка формата!");
             return;
         }
-        var plant = await _dbContext.Plants.FindAsync(plantid);
+        await DeletePlant(chatId, plantId, cancellationToken);
+    }
+
+    public async Task DeletePlant(long chatId, int plantId, CancellationToken cancellationToken)
+    {
+        var plant = await _dbContext.Plants.FindAsync(plantId);
         if (plant != null && plant.ChatId == chatId)
         {
             _dbContext.Plants.Remove(plant);
             await _dbContext.SaveChangesAsync();
             RecurringJob.RemoveIfExists(GetJobId(plantId, chatId));
-            await _bot.SendMessage(chatId, $"✅ Растение с id: {plantid} успешно удалено!");
+            await _bot.SendMessage(chatId, $"✅ Растение с id: {plantId} успешно удалено!",
+                cancellationToken: cancellationToken,
+                replyMarkup: Keyboards.Main);
         }
         else
         {
-            await _bot.SendMessage(chatId, $"❌ Растение с id: {plantid} не найдено!");
+            await _bot.SendMessage(chatId, $"❌ Растение с id: {plantId} не найдено!",
+                cancellationToken: cancellationToken,
+                replyMarkup: Keyboards.Main);
             return;
         }
     }
@@ -170,7 +194,7 @@ plant.WateringFrequency.ToLower() switch
 {
     "ежедневно" => $"0 {plant.NotificationHour} * * *",
     "еженедельно" => $"0 {plant.NotificationHour} * * {(int)DateTime.UtcNow.DayOfWeek}",
-    "ежемесячно" => $"0 {plant.NotificationHour} * {DateTime.UtcNow.Day} *",
+    "ежемесячно" => $"0 {plant.NotificationHour} {DateTime.UtcNow.Day} * *",
     _ => throw new ArgumentException("Invalid watering frequency")
 };
 }
