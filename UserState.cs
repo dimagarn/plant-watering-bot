@@ -1,8 +1,10 @@
 public enum UserState
 {
     Idle,
-    WaitingForPlantName,
-    WaitingForWateringFrequency,
-    WaitingForNotificationHour,
-    WaitingForPlantId
+    WaitingForCreatePlantName,
+    WaitingForCreatePlantWateringFrequency,
+    WaitingForCreatePlantNotificationHour,
+    WaitingForDeletePlantId,
+    WaitingForSetTimePlantId,
+    WaitingForSetTimeHour
 }

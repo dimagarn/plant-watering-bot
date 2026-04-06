@@ -5,7 +5,8 @@ public static class Keyboards
     {
         new[] {new KeyboardButton ("🌱 Добавить растение")},
         new[] {new KeyboardButton ("📋 Мои растения")},
-        new[] {new KeyboardButton ("🗑️ Удалить растение")}
+        new[] {new KeyboardButton ("🗑️ Удалить растение")},
+        new[] {new KeyboardButton ("⏰ Настроить время")}
     };
 
     public static readonly ReplyKeyboardMarkup Frequency = new[]

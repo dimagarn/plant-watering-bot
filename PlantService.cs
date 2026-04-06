@@ -16,27 +16,6 @@ public class PlantService
         _bot = bot;
     }
 
-    public async Task CreatePlant(Message message, CancellationToken cancellationToken)
-    {
-        var args = message?.Text?.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-
-        if (args.Length != 3)
-        {
-            await _bot.SendMessage(message.Chat.Id, "Правильный формат: /createplant <название> <частота>");
-            return;
-        }
-        var name = args[1];
-        var wateringFrequency = args[2];
-
-        var data = new UserPlantData
-        {
-            PlantName = name,
-            WateringFrequency = wateringFrequency
-        };
-
-        await CreatePlant(message.Chat.Id, data, cancellationToken);
-    }
-
     public async Task CreatePlant(long chatId, UserPlantData data, CancellationToken cancellationToken)
     {
         var name = data.PlantName;
@@ -47,7 +26,7 @@ public class PlantService
             ChatId = chatId,
             Name = name,
             WateringFrequency = wateringFrequency,
-            NextWateringDate = DateTime.UtcNow.AddDays(wateringFrequency.ToLower() switch
+            NextWateringDate = DateTime.UtcNow.AddDays(wateringFrequency switch
             {
                 "ежедневно" => 1,
                 "еженедельно" => 7,
@@ -89,81 +68,48 @@ public class PlantService
                     $"🌱 {plant.Name} [#{plant.Id}]\n 💧 Полив: {plant.WateringFrequency}\n 📅 Следующий полив: {plant.NextWateringDate.ToShortDateString()}\n ⏰ Напоминание: {plant.NotificationHour}:00 \n");
         else
         {
-            await _bot.SendMessage(chatid, "Похоже, что у тебя еще нет растений, не беда! Используй команду /createplant");
+            await _bot.SendMessage(chatid, "Похоже, что у тебя еще нет растений, не беда! Используй кнопку 🌱 Добавить растение");
             return;
         }
 
         await _bot.SendMessage(chatid, stringBuilder.ToString());
     }
 
-    public async Task DeletePlant(Message message, CancellationToken cancellationToken)
-    {
-        var chatId = message.Chat.Id;
-        var plantId = new int();
-
-        if (int.TryParse(message.Text.Split(' ', StringSplitOptions.RemoveEmptyEntries)[1], out int plantid))
-        {
-            plantId = plantid;
-        }
-        else
-        {
-            await _bot.SendMessage(chatId, "ошибка формата!");
-            return;
-        }
-        await DeletePlant(chatId, plantId, cancellationToken);
-    }
-
     public async Task DeletePlant(long chatId, int plantId, CancellationToken cancellationToken)
     {
+        var plant = await FindUserPlant(chatId, plantId, cancellationToken);
+        if (plant is null) return;
+        _dbContext.Plants.Remove(plant);
+        await _dbContext.SaveChangesAsync();
+        RecurringJob.RemoveIfExists(GetJobId(plantId, chatId));
+        await _bot.SendMessage(chatId, $"✅ Растение с id: {plantId} успешно удалено!",
+            cancellationToken: cancellationToken,
+            replyMarkup: Keyboards.Main);
+    }
+
+    public async Task SetTime(long chatId, int plantId, byte notificationHour, CancellationToken cancellationToken)
+    {
+        var plant = await FindUserPlant(chatId, plantId, cancellationToken);
+        if (plant is null) return;
+        plant.NotificationHour = notificationHour;
+        await _dbContext.SaveChangesAsync();
+        RecurringJob.AddOrUpdate(GetJobId(plant.Id, plant.ChatId), () => SendWateringReminder(plant.Id), GetCronExpression(plant));
+        await _bot.SendMessage(chatId, $"✅ Для Растения с id: {plantId} успешно установлено время напоминания: {notificationHour}:00!",
+            cancellationToken: cancellationToken,
+            replyMarkup: Keyboards.Main);
+    }
+
+    private async Task<Plant?> FindUserPlant(long chatId, int plantId, CancellationToken cancellationToken)
+    {
         var plant = await _dbContext.Plants.FindAsync(plantId);
-        if (plant != null && plant.ChatId == chatId)
-        {
-            _dbContext.Plants.Remove(plant);
-            await _dbContext.SaveChangesAsync();
-            RecurringJob.RemoveIfExists(GetJobId(plantId, chatId));
-            await _bot.SendMessage(chatId, $"✅ Растение с id: {plantId} успешно удалено!",
-                cancellationToken: cancellationToken,
-                replyMarkup: Keyboards.Main);
-        }
-        else
+        if (plant == null || plant.ChatId != chatId)
         {
             await _bot.SendMessage(chatId, $"❌ Растение с id: {plantId} не найдено!",
                 cancellationToken: cancellationToken,
                 replyMarkup: Keyboards.Main);
-            return;
+            return null;
         }
-    }
-
-    public async Task SetTime(Message message)
-    {
-        var chatId = message.Chat.Id;
-        var plantId = new int();
-        var notificationHour = new byte();
-        var args = message?.Text?.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-
-        if (int.TryParse(args[1], out int plantid) && byte.TryParse(args[2], out byte notificationhour))
-        {
-            plantId = plantid;
-            notificationHour = notificationhour;
-        }
-        else
-        {
-            await _bot.SendMessage(chatId, "ошибка формата!");
-            return;
-        }
-        var plant = await _dbContext.Plants.FindAsync(plantid);
-        if (plant != null && plant.ChatId == chatId)
-        {
-            plant.NotificationHour = notificationHour;
-            await _dbContext.SaveChangesAsync();
-            RecurringJob.AddOrUpdate(GetJobId(plant.Id, plant.ChatId), () => SendWateringReminder(plant.Id), GetCronExpression(plant));
-            await _bot.SendMessage(chatId, $"✅ Для Растения с id: {plantid} успешно установлено время напоминания: {notificationHour}:00!");
-        }
-        else
-        {
-            await _bot.SendMessage(chatId, $"❌ Растение с id: {plantid} не найдено!");
-            return;
-        }
+        return plant;
     }
 
     public static async Task SendWateringReminder(int plantid)
@@ -175,7 +121,7 @@ public class PlantService
             Console.WriteLine("Ошибка, растение не найдено!");
             return;
         }
-        plant.NextWateringDate = DateTime.UtcNow.AddDays(plant.WateringFrequency.ToLower() switch
+        plant.NextWateringDate = DateTime.UtcNow.AddDays(plant.WateringFrequency switch
         {
             "ежедневно" => 1,
             "еженедельно" => 7,
@@ -190,7 +136,7 @@ public class PlantService
 $"Remind for plant: {plantId}, chat: {chatId}";
 
     static string GetCronExpression(Plant plant) =>
-plant.WateringFrequency.ToLower() switch
+plant.WateringFrequency switch
 {
     "ежедневно" => $"0 {plant.NotificationHour} * * *",
     "еженедельно" => $"0 {plant.NotificationHour} * * {(int)DateTime.UtcNow.DayOfWeek}",
