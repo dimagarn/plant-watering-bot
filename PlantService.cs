@@ -4,6 +4,7 @@ using TelegramQuestBot.Models;
 using Microsoft.EntityFrameworkCore;
 using Hangfire;
 using System.Text;
+using Telegram.Bot.Types.ReplyMarkups;
 
 
 public class PlantService
@@ -57,59 +58,47 @@ public class PlantService
         }
     }
 
-    public async Task MyPlants(long chatid)
+    public async Task MyPlants(long chatId)
     {
-        var plantsList = await _dbContext.Plants.Where(p => p.ChatId == chatid).ToListAsync();
-        var stringBuilder = new StringBuilder();
+        var plantsList = await _dbContext.Plants
+        .Where(p => p.ChatId == chatId)
+        .OrderBy(p => p.Id)
+        .ToListAsync();
 
-        if (plantsList.Any())
-            foreach (var plant in plantsList)
-                stringBuilder.AppendLine(
-                    $"🌱 {plant.Name} [#{plant.Id}]\n 💧 Полив: {plant.WateringFrequency}\n 📅 Следующий полив: {plant.NextWateringDate.ToShortDateString()}\n ⏰ Напоминание: {plant.NotificationHour}:00 \n");
-        else
+        if (!plantsList.Any())
         {
-            await _bot.SendMessage(chatid, "Похоже, что у тебя еще нет растений, не беда! Используй кнопку 🌱 Добавить растение");
+            await _bot.SendMessage(chatId, "Похоже, что у тебя еще нет растений, не беда! Используй кнопку 🌱 Добавить растение");
             return;
         }
-
-        await _bot.SendMessage(chatid, stringBuilder.ToString());
+        foreach (var plant in plantsList)
+            await _bot.SendMessage(
+                chatId,
+                $"🌱 {plant.Name}\n 💧 Полив: {plant.WateringFrequency}\n 📅 Следующий полив: {plant.NextWateringDate.ToShortDateString()}\n ⏰ Напоминание: {plant.NotificationHour}:00 \n",
+                replyMarkup: Keyboards.PlantActions(plant.Id));
     }
 
     public async Task DeletePlant(long chatId, int plantId, CancellationToken cancellationToken)
     {
-        var plant = await FindUserPlant(chatId, plantId, cancellationToken);
-        if (plant is null) return;
+        var plant = await _dbContext.Plants.FindAsync(plantId);
+        if (plant is null || plant.ChatId != chatId) return;
         _dbContext.Plants.Remove(plant);
         await _dbContext.SaveChangesAsync();
         RecurringJob.RemoveIfExists(GetJobId(plantId, chatId));
-        await _bot.SendMessage(chatId, $"✅ Растение с id: {plantId} успешно удалено!",
+        await _bot.SendMessage(chatId, $"✅ Растение: {plant.Name} успешно удалено!",
             cancellationToken: cancellationToken,
             replyMarkup: Keyboards.Main);
     }
 
     public async Task SetTime(long chatId, int plantId, byte notificationHour, CancellationToken cancellationToken)
     {
-        var plant = await FindUserPlant(chatId, plantId, cancellationToken);
-        if (plant is null) return;
+        var plant = await _dbContext.Plants.FindAsync(plantId);
+        if (plant == null || plant.ChatId != chatId) return;
         plant.NotificationHour = notificationHour;
         await _dbContext.SaveChangesAsync();
         RecurringJob.AddOrUpdate(GetJobId(plant.Id, plant.ChatId), () => SendWateringReminder(plant.Id), GetCronExpression(plant));
-        await _bot.SendMessage(chatId, $"✅ Для Растения с id: {plantId} успешно установлено время напоминания: {notificationHour}:00!",
+        await _bot.SendMessage(chatId, $"✅ Для растения: {plant.Name} успешно установлено время напоминания: {notificationHour}:00!",
             cancellationToken: cancellationToken,
             replyMarkup: Keyboards.Main);
-    }
-
-    private async Task<Plant?> FindUserPlant(long chatId, int plantId, CancellationToken cancellationToken)
-    {
-        var plant = await _dbContext.Plants.FindAsync(plantId);
-        if (plant == null || plant.ChatId != chatId)
-        {
-            await _bot.SendMessage(chatId, $"❌ Растение с id: {plantId} не найдено!",
-                cancellationToken: cancellationToken,
-                replyMarkup: Keyboards.Main);
-            return null;
-        }
-        return plant;
     }
 
     public static async Task SendWateringReminder(int plantid)

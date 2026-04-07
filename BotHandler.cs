@@ -20,10 +20,32 @@ public class BotHandler
 
     public async Task HandleUpdateAsync(ITelegramBotClient botClient, Update update, CancellationToken cancellationToken)
     {
-        UserState state;
+        long chatId;
+        if (update.Type == UpdateType.CallbackQuery)
+        {
+            chatId = update.CallbackQuery.Message.Chat.Id;
+            string[] plantAction = update.CallbackQuery.Data.Split(":");
+            string action = plantAction[0];
+            int plantId = int.Parse(plantAction[1]);
+            switch (action)
+            {
+                case "delete":
+                    await _plantService.DeletePlant(chatId, plantId, cancellationToken);
+                    await _plantService.MyPlants(chatId);
+                    return;
+                case "settime":
+                    _userPlantData[chatId] = new UserPlantData { PlantId = plantId };
+                    _userStates[chatId] = UserState.WaitingForSetTimeHour;
+                    await _bot.SendMessage(chatId, "Введите время, в которое нужно отправлять уведомление(число от 0 до 23):", replyMarkup: new ReplyKeyboardRemove());
+                    return;
+            }
+        }
+
         if (update.Message?.Chat.Id is null || update.Type != UpdateType.Message) return;
-        var chatId = update.Message.Chat.Id;
+        chatId = update.Message.Chat.Id;
+        UserState state;
         _userStates.TryAdd(chatId, UserState.Idle);
+
         switch (update.Message?.Text)
         {
             case "/start":
@@ -38,17 +60,6 @@ public class BotHandler
                 _userStates[chatId] = UserState.WaitingForCreatePlantName;
                 _userPlantData[chatId] = new UserPlantData();
                 await _bot.SendMessage(chatId, "Введите название растения:", replyMarkup: new ReplyKeyboardRemove());
-                return;
-            case "🗑️ Удалить растение":
-                _userStates[chatId] = UserState.WaitingForDeletePlantId;
-                await _plantService.MyPlants(chatId);
-                await _bot.SendMessage(chatId, "Напишите id растения, которое нужно удалить:", replyMarkup: new ReplyKeyboardRemove());
-                return;
-            case "⏰ Настроить время":
-                _userStates[chatId] = UserState.WaitingForSetTimePlantId;
-                _userPlantData[chatId] = new UserPlantData();
-                await _plantService.MyPlants(chatId);
-                await _bot.SendMessage(chatId, "Напишите id растения, у которого нужно поменять время оповещения:", replyMarkup: new ReplyKeyboardRemove());
                 return;
         }
         if (_userStates.TryGetValue(chatId, out state))
@@ -91,33 +102,6 @@ public class BotHandler
                         _userPlantData.TryRemove(chatId, out _);
                         break;
                     }
-                case UserState.WaitingForDeletePlantId:
-                    {
-                        if (!int.TryParse(update.Message.Text, out int plantId))
-                        {
-                            await _bot.SendMessage(chatId, "Неправильный формат! Напишите id растения:",
-                            cancellationToken: cancellationToken,
-                            replyMarkup: new ReplyKeyboardRemove());
-                            return;
-                        }
-                        await _plantService.DeletePlant(chatId, plantId, cancellationToken);
-                        _userStates[chatId] = UserState.Idle;
-                        break;
-                    }
-                case UserState.WaitingForSetTimePlantId:
-                    {
-                        if (!int.TryParse(update.Message.Text, out int plantId))
-                        {
-                            await _bot.SendMessage(chatId, "Неправильный формат! Напишите id растения:",
-                            cancellationToken: cancellationToken,
-                            replyMarkup: new ReplyKeyboardRemove());
-                            return;
-                        }
-                        _userStates[chatId] = UserState.WaitingForSetTimeHour;
-                        _userPlantData[chatId].PlantId = plantId;
-                        await _bot.SendMessage(chatId, "Введите время, в которое нужно отправлять уведомление(число от 0 до 23):", replyMarkup: new ReplyKeyboardRemove());
-                        break;
-                    }
                 case UserState.WaitingForSetTimeHour:
                     {
                         if (!Byte.TryParse(update.Message.Text, out Byte notificationHour) || notificationHour > 23)
@@ -131,6 +115,7 @@ public class BotHandler
                         await _plantService.SetTime(chatId, plantId, notificationHour, cancellationToken);
                         _userPlantData.TryRemove(chatId, out _);
                         _userStates[chatId] = UserState.Idle;
+                        await _plantService.MyPlants(chatId);
                         break;
                     }
                 case UserState.Idle:
