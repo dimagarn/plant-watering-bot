@@ -6,16 +6,16 @@ using System.Collections.Concurrent;
 
 public class BotHandler
 {
-    private readonly AppDbContext _dbContext;
     private static TelegramBotClient _bot = null!;
     private readonly PlantService _plantService;
+    private readonly UserService _userService;
     private readonly ConcurrentDictionary<long, UserState> _userStates = new();
     private readonly ConcurrentDictionary<long, UserPlantData> _userPlantData = new();
     public BotHandler(AppDbContext dbContext, TelegramBotClient bot)
     {
-        _dbContext = dbContext;
         _bot = bot;
-        _plantService = new PlantService(_dbContext, _bot);
+        _plantService = new PlantService(dbContext, _bot);
+        _userService = new UserService(dbContext, _bot);
     }
 
     public async Task HandleUpdateAsync(ITelegramBotClient botClient, Update update, CancellationToken cancellationToken)
@@ -57,9 +57,19 @@ public class BotHandler
                 return;
             case "📋 Мои растения": await _plantService.MyPlants(chatId); return;
             case "🌱 Добавить растение":
+                if (!await _userService.UserExists(chatId))
+                {
+                    await _bot.SendMessage(chatId, "Для начала введите ваш часовой пояс в формате UtcOffset(Например +3 для Москвы или +5 для Екатеринбурга):", replyMarkup: new ReplyKeyboardRemove());
+                    _userStates[chatId] = UserState.WaitingForUtcOffset;
+                    return;
+                }
                 _userStates[chatId] = UserState.WaitingForCreatePlantName;
                 _userPlantData[chatId] = new UserPlantData();
                 await _bot.SendMessage(chatId, "Введите название растения:", replyMarkup: new ReplyKeyboardRemove());
+                return;
+            case "🕰️ Изменить часовой пояс":
+                await _bot.SendMessage(chatId, "Введите ваш часовой пояс в формате UtcOffset(Например +3 для Москвы или -6 для Мексики):", replyMarkup: new ReplyKeyboardRemove());
+                _userStates[chatId] = UserState.WaitingForUtcOffset;
                 return;
         }
         if (_userStates.TryGetValue(chatId, out state))
@@ -123,6 +133,26 @@ public class BotHandler
                         await _bot.SendMessage(chatId, "Используй кнопки меню 👆",
                             cancellationToken: cancellationToken,
                             replyMarkup: Keyboards.Main);
+                        break;
+                    }
+                case UserState.WaitingForUtcOffset:
+                    {
+                        if (!int.TryParse(update.Message.Text, out int utcOffset) || utcOffset < -12 || utcOffset > 14)
+                        {
+                            await _bot.SendMessage(chatId, "Неверный формат, попробуй еще раз");
+                            return;
+                        }
+                        if (await _userService.UserExists(chatId))
+                        {
+                            await _userService.SetUtcOffset(chatId, utcOffset);
+                            await _plantService.UpdateAllCronJobs(chatId);
+                            _userStates[chatId] = UserState.Idle;
+                            return;
+                        }
+                        await _userService.CreateUser(chatId, utcOffset);
+                        _userStates[chatId] = UserState.WaitingForCreatePlantName;
+                        _userPlantData[chatId] = new UserPlantData();
+                        await _bot.SendMessage(chatId, "Введите название растения:", replyMarkup: new ReplyKeyboardRemove());
                         break;
                     }
             }

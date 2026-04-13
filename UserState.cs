@@ -4,5 +4,6 @@ public enum UserState
     WaitingForCreatePlantName,
     WaitingForCreatePlantWateringFrequency,
     WaitingForCreatePlantNotificationHour,
-    WaitingForSetTimeHour
+    WaitingForSetTimeHour,
+    WaitingForUtcOffset
 }

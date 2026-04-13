@@ -1,10 +1,12 @@
 using Telegram.Bot.Types.ReplyMarkups;
+
 public static class Keyboards
 {
     public static readonly ReplyKeyboardMarkup Main = new[]
     {
         new[] {new KeyboardButton ("🌱 Добавить растение")},
-        new[] {new KeyboardButton ("📋 Мои растения")}
+        new[] {new KeyboardButton ("📋 Мои растения")},
+        new[] {new KeyboardButton ("🕰️ Изменить часовой пояс")}
     };
 
     public static readonly ReplyKeyboardMarkup Frequency = new[]

@@ -1,11 +1,7 @@
 using Telegram.Bot;
-using Telegram.Bot.Types;
 using TelegramQuestBot.Models;
 using Microsoft.EntityFrameworkCore;
 using Hangfire;
-using System.Text;
-using Telegram.Bot.Types.ReplyMarkups;
-
 
 public class PlantService
 {
@@ -21,6 +17,10 @@ public class PlantService
     {
         var name = data.PlantName;
         var wateringFrequency = data.WateringFrequency;
+        var notificationHour = data.NotificationHour;
+        var user = await _dbContext.Users.FindAsync(chatId);
+
+        if (user is null) return;
 
         var plant = new Plant
         {
@@ -33,14 +33,15 @@ public class PlantService
                 "еженедельно" => 7,
                 "ежемесячно" => 30,
                 _ => throw new ArgumentException("Invalid watering frequency")
-            })
+            }),
+            NotificationHour = notificationHour
         };
 
         try
         {
             _dbContext.Plants.Add(plant);
             await _dbContext.SaveChangesAsync();
-            RecurringJob.AddOrUpdate(GetJobId(plant.Id, plant.ChatId), () => SendWateringReminder(plant.Id), GetCronExpression(plant));
+            RecurringJob.AddOrUpdate(GetJobId(plant.Id, plant.ChatId), () => SendWateringReminder(plant.Id), GetCronExpression(plant, user));
             await _bot.SendMessage(
                 chatId: chatId,
                 text: $"✅ Растение '{plant.Name}' добавлено! Я буду напоминать тебе поливать его {plant.WateringFrequency} в {plant.NotificationHour}:00.",
@@ -92,10 +93,11 @@ public class PlantService
     public async Task SetTime(long chatId, int plantId, byte notificationHour, CancellationToken cancellationToken)
     {
         var plant = await _dbContext.Plants.FindAsync(plantId);
-        if (plant == null || plant.ChatId != chatId) return;
+        var user = await _dbContext.Users.FindAsync(chatId);
+        if (plant is null || plant.ChatId != chatId || user is null) return;
         plant.NotificationHour = notificationHour;
         await _dbContext.SaveChangesAsync();
-        RecurringJob.AddOrUpdate(GetJobId(plant.Id, plant.ChatId), () => SendWateringReminder(plant.Id), GetCronExpression(plant));
+        RecurringJob.AddOrUpdate(GetJobId(plant.Id, plant.ChatId), () => SendWateringReminder(plant.Id), GetCronExpression(plant, user));
         await _bot.SendMessage(chatId, $"✅ Для растения: {plant.Name} успешно установлено время напоминания: {notificationHour}:00!",
             cancellationToken: cancellationToken,
             replyMarkup: Keyboards.Main);
@@ -121,15 +123,33 @@ public class PlantService
         await _bot.SendMessage(plant.ChatId, $"Напоминание! Полить растение: {plant.Name} 🌿");
     }
 
+    public async Task UpdateAllCronJobs(long chatId)
+    {
+        var user = await _dbContext.Users.FindAsync(chatId);
+        var plantsList = await _dbContext.Plants
+        .Where(p => p.ChatId == chatId)
+        .ToListAsync();
+
+        if (user is null || !plantsList.Any()) return;
+        foreach (var plant in plantsList)
+        {
+            RecurringJob.AddOrUpdate(GetJobId(plant.Id, plant.ChatId), () => SendWateringReminder(plant.Id), GetCronExpression(plant, user));
+        }
+    }
+
     static string GetJobId(int plantId, long chatId) =>
 $"Remind for plant: {plantId}, chat: {chatId}";
 
-    static string GetCronExpression(Plant plant) =>
-plant.WateringFrequency switch
-{
-    "ежедневно" => $"0 {plant.NotificationHour} * * *",
-    "еженедельно" => $"0 {plant.NotificationHour} * * {(int)DateTime.UtcNow.DayOfWeek}",
-    "ежемесячно" => $"0 {plant.NotificationHour} {DateTime.UtcNow.Day} * *",
-    _ => throw new ArgumentException("Invalid watering frequency")
-};
+    static string GetCronExpression(Plant plant, User user)
+    {
+        var utcHour = (plant.NotificationHour - user.UtcOffset + 24) % 24;
+        return plant.WateringFrequency switch
+        {
+            "ежедневно" => $"0 {utcHour} * * *",
+            "еженедельно" => $"0 {utcHour} * * {(int)DateTime.UtcNow.DayOfWeek}",
+            "ежемесячно" => $"0 {utcHour} {DateTime.UtcNow.Day} * *",
+            _ => throw new ArgumentException("Invalid watering frequency")
+        };
+    }
+
 }

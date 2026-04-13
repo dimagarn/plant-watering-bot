@@ -1,5 +1,3 @@
-using Microsoft.EntityFrameworkCore;
-
 namespace TelegramQuestBot.Models
 {
     public class Plant
