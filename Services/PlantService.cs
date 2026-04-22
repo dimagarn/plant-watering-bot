@@ -62,7 +62,7 @@ public class PlantService
         {
             await _bot.SendMessage(
                 chatId,
-                $"🌱 {plant.Name}\n 💧 Полив: {plant.WateringFrequency}\n 📅 Следующий полив: {plant.NextWateringDate.ToShortDateString()}\n ⏰ Напоминание: {plant.NotificationHour}:00 \n",
+                $"🌱 {plant.Name}\n 💧 Полив: {plant.WateringFrequency}\n 📅 Следующий полив: {plant.NextWateringDate.ToString("dd.MM.yyyy")}\n ⏰ Напоминание: {plant.NotificationHour}:00 \n",
                 replyMarkup: Keyboards.PlantActions(plant.Id));
         }
     }
