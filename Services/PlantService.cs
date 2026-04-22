@@ -22,24 +22,11 @@ public class PlantService
 
         if (user is null) return;
 
-        var plant = new Plant
-        {
-            ChatId = chatId,
-            Name = name,
-            WateringFrequency = wateringFrequency,
-            NextWateringDate = DateTime.UtcNow.AddDays(wateringFrequency switch
-            {
-                "ежедневно" => 1,
-                "еженедельно" => 7,
-                "ежемесячно" => 30,
-                _ => throw new ArgumentException("Invalid watering frequency")
-            }),
-            NotificationHour = notificationHour
-        };
+        var plant = new Plant(name, wateringFrequency, chatId, notificationHour);
 
         try
         {
-            _dbContext.Plants.Add(plant);
+            await _dbContext.Plants.AddAsync(plant);
             await _dbContext.SaveChangesAsync();
             RecurringJob.AddOrUpdate(GetJobId(plant.Id, plant.ChatId), () => SendWateringReminder(plant.Id), GetCronExpression(plant, user));
             await _bot.SendMessage(
@@ -62,29 +49,33 @@ public class PlantService
     public async Task MyPlants(long chatId)
     {
         var plantsList = await _dbContext.Plants
-        .Where(p => p.ChatId == chatId)
-        .OrderBy(p => p.Id)
-        .ToListAsync();
+            .Where(p => p.ChatId == chatId)
+            .OrderBy(p => p.Id)
+            .ToListAsync();
 
-        if (!plantsList.Any())
+        if (plantsList.Count() == 0)
         {
             await _bot.SendMessage(chatId, "Похоже, что у тебя еще нет растений, не беда! Используй кнопку 🌱 Добавить растение");
             return;
         }
         foreach (var plant in plantsList)
+        {
             await _bot.SendMessage(
                 chatId,
                 $"🌱 {plant.Name}\n 💧 Полив: {plant.WateringFrequency}\n 📅 Следующий полив: {plant.NextWateringDate.ToShortDateString()}\n ⏰ Напоминание: {plant.NotificationHour}:00 \n",
                 replyMarkup: Keyboards.PlantActions(plant.Id));
+        }
     }
 
     public async Task DeletePlant(long chatId, int plantId, CancellationToken cancellationToken)
     {
         var plant = await _dbContext.Plants.FindAsync(plantId);
         if (plant is null || plant.ChatId != chatId) return;
+        
         _dbContext.Plants.Remove(plant);
         await _dbContext.SaveChangesAsync();
         RecurringJob.RemoveIfExists(GetJobId(plantId, chatId));
+
         await _bot.SendMessage(chatId, $"✅ Растение: {plant.Name} успешно удалено!",
             cancellationToken: cancellationToken,
             replyMarkup: Keyboards.Main);
@@ -94,10 +85,14 @@ public class PlantService
     {
         var plant = await _dbContext.Plants.FindAsync(plantId);
         var user = await _dbContext.Users.FindAsync(chatId);
+
         if (plant is null || plant.ChatId != chatId || user is null) return;
+
         plant.NotificationHour = notificationHour;
         await _dbContext.SaveChangesAsync();
+
         RecurringJob.AddOrUpdate(GetJobId(plant.Id, plant.ChatId), () => SendWateringReminder(plant.Id), GetCronExpression(plant, user));
+
         await _bot.SendMessage(chatId, $"✅ Для растения: {plant.Name} успешно установлено время напоминания: {notificationHour}:00!",
             cancellationToken: cancellationToken,
             replyMarkup: Keyboards.Main);
@@ -106,19 +101,13 @@ public class PlantService
     public static async Task SendWateringReminder(int plantid)
     {
         using var dbContext = new AppDbContext();
-        var plant = await dbContext.Plants.FindAsync(plantid);
+        var plant = await dbContext.Plants.FindAsync(plantid); //TODO: исправить на FirstOrDefault
         if (plant is null)
         {
             Console.WriteLine("Ошибка, растение не найдено!");
             return;
         }
-        plant.NextWateringDate = DateTime.UtcNow.AddDays(plant.WateringFrequency switch
-        {
-            "ежедневно" => 1,
-            "еженедельно" => 7,
-            "ежемесячно" => 30,
-            _ => throw new ArgumentException("Invalid watering frequency")
-        });
+        plant.UpdateNextWateringDate();
         await dbContext.SaveChangesAsync();
         await _bot.SendMessage(plant.ChatId, $"Напоминание! Полить растение: {plant.Name} 🌿");
     }
@@ -137,10 +126,10 @@ public class PlantService
         }
     }
 
-    static string GetJobId(int plantId, long chatId) =>
-$"Remind for plant: {plantId}, chat: {chatId}";
+    private static string GetJobId(int plantId, long chatId) =>
+        $"Remind for plant: {plantId}, chat: {chatId}";
 
-    static string GetCronExpression(Plant plant, User user)
+    private static string GetCronExpression(Plant plant, User user)
     {
         var utcHour = (plant.NotificationHour - user.UtcOffset + 24) % 24;
         return plant.WateringFrequency switch
@@ -151,5 +140,4 @@ $"Remind for plant: {plantId}, chat: {chatId}";
             _ => throw new ArgumentException("Invalid watering frequency")
         };
     }
-
 }

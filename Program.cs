@@ -32,7 +32,7 @@ namespace TelegramQuestBot
             var receiverOptions = new ReceiverOptions { AllowedUpdates = { } };
             bot.StartReceiving(
                 updateHandler: botHandler.HandleUpdateAsync,
-                errorHandler: botHandler.HandleErrorAsync,
+                errorHandler: botHandler.HandleError,
                 receiverOptions: receiverOptions,
                 cancellationToken: cts.Token
             );
