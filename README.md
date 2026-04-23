@@ -29,18 +29,18 @@
 
 ### Главное меню
 
-![[Main menu.png]]
+![Главное меню](Screenshots/Main_menu.png)
 ### Список растений
 
-![[Plants list.png]]
+![Список растений](Screenshots/Plants_list.png)
 
 ### Создание растения
 
-![[Create plant.png]]
+![Создание растения](Screenshots/Create_plant.png)
 
 ### Напоминание
 
-![[Reminder.png]]
+![Напоминание](Screenshots/Reminder.png)
 
 ---
 
@@ -63,11 +63,16 @@
 ```
 BotHandler
 ├── MessageHandler     — обрабатывает текстовые сообщения и кнопки
-└── CallbackHandler    — обрабатывает нажатия инлайн-кнопок
+├── CallbackHandler    — обрабатывает нажатия инлайн-кнопок
+└── UserStateManager   — FSM состояния пользователей
 
 Services
-├── PlantService       — CRUD для растений, Hangfire jobs
+├── PlantService       — CRUD растений, Hangfire jobs
 └── UserService        — регистрация, часовой пояс
+
+Models
+├── Plant              — модель растения
+└── User               — модель пользователя с часовым поясом
 
 UserStateManager       — FSM состояния пользователей (ConcurrentDictionary)
 ```
